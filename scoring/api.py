@@ -120,14 +120,17 @@ class DateField(Field):
 
 
 class BirthDayField(DateField):
-    max_birthday = datetime.datetime(year=1900, month=1, day=1)
+    def __init__(self, required=True, nullable=False, max_age=100):
+        self.required = required
+        self.nullable = nullable
+        self.max_age = max_age
 
     def validate(self, value):
         super().validate(value)
 
         value_date = datetime.datetime.strptime(value, "%d.%m.%Y")
-        if (value_date - self.max_birthday).days < 0:
-            raise ValueError(f"Expected {value!r} to be not more than 01.01.1900")
+        if (datetime.datetime.now() - value_date).days / 365.24 > self.max_age:
+            raise ValueError(f"Expected {value!r} to be not more than 70 years old")
 
 
 class GenderField(Field):
@@ -137,10 +140,15 @@ class GenderField(Field):
 
 
 class ClientIDsField(Field):
+    def __init__(self, required=True, nullable=False, min_size=0):
+        self.required = required
+        self.nullable = nullable
+        self.min_size = min_size
+
     def validate(self, value):
         if not (isinstance(value, list) or isinstance(value, tuple)):
             raise TypeError(f"Expected {value} to be a list or tuple")
-        if len(value) < 1:
+        if self.min_size > 0 and len(value) < self.min_size:
             raise ValueError(f"Expected client_ids {value} to be not empty")
         for item in value:
             if not isinstance(item, int):
@@ -183,7 +191,7 @@ class BaseRequest(abc.ABC):
 
 
 class ClientsInterestsRequest(BaseRequest):
-    client_ids = ClientIDsField(required=True)
+    client_ids = ClientIDsField(required=True, min_size=1)
     date = DateField(required=False, nullable=True)
 
 
@@ -198,7 +206,7 @@ class OnlineScoreRequest(BaseRequest):
     last_name = CharField(required=False, nullable=True)
     email = EmailField(required=False, nullable=True)
     phone = PhoneField(required=False, nullable=True)
-    birthday = BirthDayField(required=False, nullable=True)
+    birthday = BirthDayField(required=False, nullable=True, max_age=70)
     gender = GenderField(required=False, nullable=True)
 
     def validate(self):
@@ -212,7 +220,7 @@ class OnlineScoreRequest(BaseRequest):
                 break
         if invalid_request:
             raise ValueError(
-                f"Expected one if required fields set: {self._valid_fields_combinations} "
+                f"Expected one of required fields set  {self._valid_fields_combinations} to be presented in request"
             )
 
 
