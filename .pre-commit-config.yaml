@@ -2,7 +2,7 @@
 # See https://pre-commit.com/hooks.html for more hooks
 exclude: |
   (?x)(
-        ^tests/|
+        ^tests/
     )
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
