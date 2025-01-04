@@ -35,6 +35,6 @@ repos:
     rev: 1.8.4
     hooks:
     -   id: poetry-check   # to make sure the poetry configuration does not get committed in a broken state
-    -   id: poetry-lock    # to make sure all locked packages are installed
+    # -   id: poetry-lock    # to make sure all locked packages are installed
     -   id: poetry-export  # to sync your requirements.txt file with your current dependencies
     -   id: poetry-install # to make sure all locked packages are installed

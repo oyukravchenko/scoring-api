@@ -1,0 +1,21 @@
+name: CI/CD # pipeline's name that will appear in Github Actions
+
+on: # events that trigger our pipeline: push on any branch and release creation
+  push:
+  release:
+    types: [created]
+
+jobs: # jobs. We will have two jobs (test and publish) with multiple steps.
+  test:
+    # Our test job will run on ubuntu.
+    # We define matrix strategy for python-version so that
+    # our tests are run on multiple python versions:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        python-version: ["3.12.8"]
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: validate types
+        run: make test
