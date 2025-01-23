@@ -1,11 +1,12 @@
 import datetime
 import functools
 import hashlib
+import json
 import unittest
+from unittest.mock import Mock
 
 from scoring import api
-
-# from scoring import api
+from scoring.store import Storage
 
 
 def cases(cases):
@@ -14,10 +15,12 @@ def cases(cases):
         def wrapper(*args):
             for c in cases:
                 new_args = args + (c if isinstance(c, tuple) else (c,))
-                f(*new_args)
-
+                try:
+                    f(*new_args)
+                except Exception as err:
+                    print(f"Test failure with args: f{new_args}")
+                    raise err
         return wrapper
-
     return decorator
 
 
@@ -176,7 +179,12 @@ class TestSuite(unittest.TestCase):
             "arguments": arguments,
         }
         self.set_valid_auth(request)
+        storage = Mock(Storage)
+        storage.cache_get.return_value = None
+        self.settings = storage
+
         response, code = self.get_response(request)
+
         self.assertEqual(api.OK, code, arguments)
         score = response.get("score")
         self.assertTrue(isinstance(score, (int, float)) and score >= 0, arguments)
@@ -191,7 +199,9 @@ class TestSuite(unittest.TestCase):
             "arguments": arguments,
         }
         self.set_valid_auth(request)
+
         response, code = self.get_response(request)
+
         self.assertEqual(api.OK, code)
         score = response.get("score")
         self.assertEqual(score, 42)
@@ -214,7 +224,9 @@ class TestSuite(unittest.TestCase):
             "arguments": arguments,
         }
         self.set_valid_auth(request)
+
         response, code = self.get_response(request)
+
         self.assertEqual(api.INVALID_REQUEST, code, arguments)
         self.assertTrue(len(response))
 
@@ -235,6 +247,11 @@ class TestSuite(unittest.TestCase):
             "method": "clients_interests",
             "arguments": arguments,
         }
+        self.settings = {"i:0": json.dumps(['interest1']),
+                         "i:1": json.dumps(['interest1', 'interest2']),
+                         "i:2": json.dumps(['interest3', 'interest4']),
+                         "i:3": json.dumps(['interest5', 'interest6'])}
+        
         self.set_valid_auth(request)
         response, code = self.get_response(request)
         self.assertEqual(api.OK, code, arguments)

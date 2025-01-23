@@ -6,6 +6,7 @@ import datetime
 import hashlib
 import json
 import logging
+import os
 import re
 import uuid
 from argparse import ArgumentParser
@@ -13,9 +14,8 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
-# from scoring import get_score, get_interests
-import scoring
 from scoring.scoring import get_interests, get_score
+from scoring.store import Storage
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -42,14 +42,6 @@ GENDERS = {
     MALE: "male",
     FEMALE: "female",
 }
-
-
-class SkipField(Exception):
-    pass
-
-
-class NullValueNotAllowed(Exception):
-    pass
 
 
 class Field(abc.ABC):
@@ -79,24 +71,33 @@ class Field(abc.ABC):
 
 class CharField(Field):
     def validate(self, value):
+        if not value and self.nullable:
+            return
         if not isinstance(value, str):
             raise TypeError(f"Expected {value!r} to be an str")
 
 
 class ArgumentsField(Field):
     def validate(self, value):
+        if not value and self.nullable:
+            return
         if not isinstance(value, dict):
             raise TypeError(f"Expected {value!r} to be an dict")
 
 
 class EmailField(CharField):
     def validate(self, value):
+        if not value and self.nullable:
+            return
+        super().validate(value)
         if not re.match(r"[^@]+@[^@]+\.[^@]+", value):
-            raise ValueError("invalid email")
+            raise ValueError(f"invalid email {value}")
 
 
 class PhoneField(Field):
     def validate(self, value):
+        if not value and self.nullable:
+            return
         if isinstance(value, str):
             if len(value) != 11 or not re.match(r"^7\d{10}", value):
                 raise ValueError(
@@ -110,10 +111,13 @@ class PhoneField(Field):
 class DateField(Field):
     def __set__(self, obj, value):
         self.validate(value)
-        value = datetime.datetime.strptime(value, "%d.%m.%Y")
+        if self.nullable and value:
+            value = datetime.datetime.strptime(value, "%d.%m.%Y")
         setattr(obj, self.private_name, value)
 
     def validate(self, value):
+        if not value and self.nullable:
+            return
         # TODO: add valid date check
         if not re.match(r"(\d){2}\.(\d){2}\.(\d){4}", value):
             raise ValueError(f"Expected {value!r} to be in format dd.mm.yyyy")
@@ -126,17 +130,21 @@ class BirthDayField(DateField):
         self.max_age = max_age
 
     def validate(self, value):
+        if not value and self.nullable:
+            return
         super().validate(value)
 
         value_date = datetime.datetime.strptime(value, "%d.%m.%Y")
         if (datetime.datetime.now() - value_date).days / 365.24 > self.max_age:
-            raise ValueError(f"Expected {value!r} to be not more than 70 years old")
+            raise ValueError(
+                f"Expected {value!r} to be not more than {self.max_age} years old"
+            )
 
 
 class GenderField(Field):
     def validate(self, value):
-        if value not in GENDERS.keys():
-            raise ValueError(f"Expected one of {GENDERS.values()}")
+        if value and value not in GENDERS.keys():
+            raise ValueError(f"Expected one of {list(GENDERS.keys())}")
 
 
 class ClientIDsField(Field):
@@ -156,21 +164,24 @@ class ClientIDsField(Field):
 
 
 class BaseRequest(abc.ABC):
+
     @classmethod
     def from_json(cls, data):
         instance = cls()
 
         for field_name, field in cls.__dict__.items():
             if isinstance(field, Field):
-                value = data.get(field_name)
+                try:
+                    value = data[field_name]
 
-                if field.required and value is None and not field.nullable:
-                    raise ValueError(f"Missing required field: {field_name}")
+                    if value is None and not field.nullable:
+                        raise ValueError(
+                            f"{cls.__name__} - got None for not nullable field {field_name}"
+                        )
 
-                if value is None and field.nullable:
-                    continue
-
-                setattr(instance, field_name, value)
+                    setattr(instance, field_name, value)
+                except KeyError:
+                    pass
 
         return instance
 
@@ -178,9 +189,11 @@ class BaseRequest(abc.ABC):
         for attr_name, attr_value in self.__class__.__dict__.items():
             if isinstance(attr_value, Field):
                 if attr_value.required and getattr(self, attr_name, None) is None:
-                    raise ValueError(f"{type}: {attr_name} is required")
+                    raise ValueError(f"{type(self).__name__}: {attr_name} is required")
                 if not attr_value.nullable and getattr(self, attr_name) is None:
-                    raise ValueError(f"{type}: {attr_name} cannot be null")
+                    raise ValueError(
+                        f"{type(self).__name__}: {attr_name} cannot be null"
+                    )
 
     def presented_fields(self):
         """
@@ -328,7 +341,7 @@ def method_handler(request, ctx, store):
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
     router = {"method": method_handler}
-    store = None
+    store = Storage(os.environ["STORAGE_HOST"], int(os.environ["STORAGE_PORT"]))
 
     def get_request_id(self, headers):
         return headers.get("HTTP_X_REQUEST_ID", uuid.uuid4().hex)

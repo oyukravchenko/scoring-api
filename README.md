@@ -1,14 +1,31 @@
-Запустить тесты
+## Запуск в докере
+Тесты
 ```
-python -m unittest discover -s tests
+make tests
+```
+Запуск сервера
+```
+make run_server
+```
+
+## Запуск без докера
+* При запуске берутся реквизиты сервера redis из .env-файла
+
+Установка зависимостей с помощью poetry
+```
+pip install poetry && poetry install --with dev
+```
+Запуск тестов
+```
+dotenv run poetry run pytest
 ```
 
 Запуск сервера с указанием лог-файла
 ```
-python -m scoring.api --log scoring_log.txt
+dotenv run python -m scoring.api --log scoring_log.txt
 ```
 
 Запуск сервера без указания лог-файла (логирование в stdout)
 ```
-python -m scoring.api
+dotenv run python -m scoring.api
 ```
